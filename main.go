@@ -75,10 +75,11 @@ func main() {
 	}
 
 	// Determine which of the files hasn't been accessed/used in the greatest period of time (eg least needed)
+	cleanTarget := 5 * 1024 * 1024 * 1024 // 5GB
 	dbQuery := `
 		SELECT name, size, lastaccess
 		FROM "files"
-		ORDER BY lastaccess DESC`
+		ORDER BY lastaccess ASC`
 	var name string
 	var size int
 	var lastAccess time.Time
@@ -87,28 +88,24 @@ func main() {
 		if err = s.Scan(&name, &size, &lastAccess); err != nil {
 			log.Fatal(err)
 		}
-		totalSize += size
-		fmt.Printf("File: '%v', last accessed '%v', size: %v\n", name, lastAccess.Local(), humanize.Bytes(uint64(size)))
+		if totalSize <= cleanTarget {
+			// Delete the least recently used files
+			fmt.Printf("Deleting file: '%v', last accessed '%v', size: %v\n", name, lastAccess.Local(), humanize.Bytes(uint64(size)))
+			err := os.Remove(name)
+			if err != nil {
+				log.Fatal(err)
+			}
+			totalSize += size
+		}
 		return
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("\nAmount of disk used by SQLite cache files: %s\n", humanize.Bytes(uint64(totalSize)))
 
-	// TODO: Delete the least used files - up to some quantity - to free up disk cache space
-
-	// TODO: Report on the deleted files
-}
-
-func dispInfo(path string, z os.FileInfo) {
-	fmt.Printf("File: '%v'\n", filepath.Join(path, z.Name()))
-	fmt.Printf("Size: %s\n", humanize.Bytes(uint64(z.Size())))
-
-	aRaw := z.Sys().(*syscall.Stat_t).Atim
-	aTime := time.Unix(aRaw.Sec, aRaw.Nsec)
-	fmt.Printf("Last accessed: %v\t Last modified: %v\n\n", aTime, z.ModTime())
-
+	// Report on the deleted files
+	fmt.Printf("\nTarget to clean up: %s\n", humanize.Bytes(uint64(cleanTarget)))
+	fmt.Printf("Space recovered: %s\n", humanize.Bytes(uint64(totalSize)))
 }
 
 // Adds a given database file to the in memory SQLite database
@@ -117,6 +114,7 @@ func addFile(path string, z os.FileInfo) {
 	aRaw := z.Sys().(*syscall.Stat_t).Atim
 	aTime := time.Unix(aRaw.Sec, aRaw.Nsec)
 
+	// Add file to the database
 	_, err := sdb.ExecDml("INSERT INTO files (name, size, lastmod, lastaccess) VALUES (?, ?, ?, ?)",
 		filepath.Join(path, z.Name()), z.Size(), z.ModTime(), aTime)
 	if err != nil {
