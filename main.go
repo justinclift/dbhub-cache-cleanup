@@ -81,9 +81,8 @@ func main() {
 		FROM "files"
 		ORDER BY lastaccess ASC`
 	var name string
-	var size int
+	var size, totalSize, fileCount int
 	var lastAccess time.Time
-	var totalSize int
 	err = sdb.Select(dbQuery, func(s *sqlite.Stmt) (err error) {
 		if err = s.Scan(&name, &size, &lastAccess); err != nil {
 			log.Fatal(err)
@@ -96,6 +95,7 @@ func main() {
 				log.Fatal(err)
 			}
 			totalSize += size
+			fileCount++
 		}
 		return
 	})
@@ -105,7 +105,7 @@ func main() {
 
 	// Report on the deleted files
 	fmt.Printf("\nTarget to clean up: %s\n", humanize.Bytes(uint64(cleanTarget)))
-	fmt.Printf("Space recovered: %s\n", humanize.Bytes(uint64(totalSize)))
+	fmt.Printf("Files removed: %d, space recovered: %s\n", fileCount, humanize.Bytes(uint64(totalSize)))
 }
 
 // Adds a given database file to the in memory SQLite database
